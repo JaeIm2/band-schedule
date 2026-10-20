@@ -50,7 +50,6 @@ body {
 }
 .hidden { display: none !important; }
 h2 { margin: 0; font-size: 18px; }
-h3 { margin: 20px 0 8px; font-size: 14px; color: var(--muted); }
 label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
 .muted { color: var(--muted); font-weight: 400; font-size: 13px; }
 .hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
@@ -146,9 +145,6 @@ button.link.danger { color: var(--danger); }
 .people { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 .people span { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
 .people span.me { border-color: var(--primary); color: var(--primary); }
-
-.recent ul { list-style: none; margin: 0; padding: 0; }
-.recent li a { display: block; padding: 8px 0; color: var(--primary); text-decoration: none; border-top: 1px solid var(--border); font-size: 14px; }
 
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);

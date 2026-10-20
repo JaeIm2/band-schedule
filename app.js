@@ -47,19 +47,6 @@
     $("c-start").value = TODAY_ISO;
     $("c-end").value = iso(addDays(today, 20));
 
-    const recent = store.get("bs:recent", []);
-    if (recent.length) {
-      show($("recent"), true);
-      recent.forEach((r) => {
-        const li = document.createElement("li");
-        const a = document.createElement("a");
-        a.href = `?r=${encodeURIComponent(r.id)}`;
-        a.textContent = r.title;
-        li.appendChild(a);
-        $("recent-list").appendChild(li);
-      });
-    }
-
     $("create-btn").addEventListener("click", async () => {
       const status = $("create-status");
       status.classList.remove("err");
@@ -104,11 +91,6 @@
       return;
     }
 
-    // 최근 본 일정에 기록
-    const recent = store.get("bs:recent", []).filter((r) => r.id !== id);
-    recent.unshift({ id, title: room.title });
-    store.set("bs:recent", recent.slice(0, 10));
-
     const start = parse(room.start_date);
     const DAYS = Math.round((parse(room.end_date) - start) / 86400000) + 1;
     const dates = Array.from({ length: DAYS }, (_, i) => addDays(start, i));
@@ -119,7 +101,7 @@
     const TOTAL = room.total_people;
     const nameKey = `bs:name:${id}`;
 
-    document.title = `${room.title} · 밴드 일정 맞추기`;
+    document.title = `${room.title} · 일정 맞추기`;
     $("title").textContent = room.title;
     $("range-label").textContent = `${fmt(dates[0])} ~ ${fmt(dates[DAYS - 1])}` + (TOTAL ? ` · ${TOTAL}명` : "");
 
