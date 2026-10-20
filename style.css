@@ -124,6 +124,8 @@ button.link.danger { color: var(--danger); }
 .summary .day .cnt { position: absolute; right: 6px; bottom: 4px; font-size: 12px; font-weight: 700; }
 .summary .day.full { background: var(--full); border-color: var(--full); }
 .summary .day.full .d, .summary .day.full .m, .summary .day.full .names, .summary .day.full .cnt { color: #fff; }
+.summary .day.pick { background: var(--primary); border-color: var(--primary); }
+.summary .day.pick .d, .summary .day.pick .m { color: var(--primary-text); }
 .summary .day.sel { outline: 2px solid var(--text); outline-offset: -2px; }
 
 .best { margin: 14px 0 10px; font-size: 15px; line-height: 1.6; }
@@ -143,8 +145,11 @@ button.link.danger { color: var(--danger); }
 .detail .no { color: var(--muted); }
 
 .people { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
-.people span { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
-.people span.me { border-color: var(--primary); color: var(--primary); }
+.people .chip { padding: 4px 10px; }
+.people .chip.me { border-color: var(--primary); color: var(--primary); }
+.people .chip.active { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+
+.focus { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
 
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);

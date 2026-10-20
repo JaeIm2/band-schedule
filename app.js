@@ -109,6 +109,7 @@
     let selected = new Set();
     let all = []; // [{name, dates}]
     let detailIso = null;
+    let focusName = null; // 참여자 칩을 누르면 그 사람 날짜만 보기
 
     // ---------- 링크 복사 ----------
     const copyLink = async () => {
@@ -249,20 +250,37 @@
       const denom = TOTAL || n || 1;
       $("people-count").textContent = TOTAL ? `(${n}/${TOTAL}명 입력)` : `(${n}명 입력)`;
 
+      const focus = all.find((p) => p.name === focusName);
+      if (!focus) focusName = null;
+      show($("legend"), !focus);
+      const fb = $("focus");
+      fb.innerHTML = "";
+      if (focus) {
+        const t = document.createElement("span");
+        t.textContent = `${focus.name} 님이 고른 날짜 (${focus.dates.length}일)`;
+        const b = document.createElement("button");
+        b.className = "link";
+        b.textContent = "전체 보기";
+        b.addEventListener("click", () => { focusName = null; renderSummary(); });
+        fb.append(t, b);
+      }
+      show(fb, !!focus);
+
       const counts = ISO.map((d) => whoOn(d));
       sumCells.forEach((el, i) => {
         const names = counts[i];
-        const full = names.length > 0 && names.length >= denom;
+        const full = !focus && names.length > 0 && names.length >= denom;
         el.classList.toggle("full", full);
+        el.classList.toggle("pick", !!focus && focus.dates.includes(ISO[i]));
         el.classList.toggle("sel", el.dataset.iso === detailIso);
-        el.style.background = full || !names.length ? "" : `rgba(var(--heat), ${0.12 + 0.55 * (names.length / denom)})`;
+        el.style.background = focus || full || !names.length ? "" : `rgba(var(--heat), ${0.12 + 0.55 * (names.length / denom)})`;
         let extra = el.querySelector(".names");
         if (!extra) {
           extra = document.createElement("div"); extra.className = "names"; el.appendChild(extra);
           const c = document.createElement("div"); c.className = "cnt"; el.appendChild(c);
         }
-        extra.textContent = names.join(", ");
-        el.querySelector(".cnt").textContent = names.length ? `${names.length}/${denom}` : "";
+        extra.textContent = focus ? "" : names.join(", ");
+        el.querySelector(".cnt").textContent = !focus && names.length ? `${names.length}/${denom}` : "";
       });
 
       // 베스트 날짜
@@ -317,9 +335,10 @@
       const pl = $("people");
       pl.innerHTML = "";
       all.forEach((p) => {
-        const s = document.createElement("span");
-        if (p.name === me) s.className = "me";
+        const s = document.createElement("button");
+        s.className = "chip" + (p.name === me ? " me" : "") + (p.name === focusName ? " active" : "");
         s.textContent = `${p.name} · ${p.dates.length}일`;
+        s.addEventListener("click", () => { focusName = focusName === p.name ? null : p.name; renderSummary(); });
         pl.appendChild(s);
       });
     }
