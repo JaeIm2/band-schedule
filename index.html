@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>밴드 일정 맞추기</title>
+  <link rel="stylesheet" href="style.css?v=1" />
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <h1 id="title"><a href="./">밴드 일정 맞추기</a></h1>
+      <p class="sub" id="range-label"></p>
+    </header>
+
+    <!-- 설정 안 됨 -->
+    <section id="view-setup" class="card hidden">
+      <strong>config.js 설정이 필요해요</strong>
+      <p class="hint">Supabase URL과 publishable key를 config.js에 넣어주세요.</p>
+    </section>
+
+    <!-- 방 만들기 -->
+    <section id="view-create" class="card hidden">
+      <h2>새 일정 만들기</h2>
+      <label for="c-title">제목</label>
+      <input id="c-title" type="text" placeholder="예: 11월 합주" maxlength="40" autocomplete="off" />
+      <div class="grid2">
+        <div>
+          <label for="c-start">시작일</label>
+          <input id="c-start" type="date" />
+        </div>
+        <div>
+          <label for="c-end">종료일</label>
+          <input id="c-end" type="date" />
+        </div>
+      </div>
+      <label for="c-total">인원 <span class="muted">(선택 — 넣으면 "전원 가능" 날짜를 따로 보여줘요)</span></label>
+      <input id="c-total" type="number" min="1" max="50" placeholder="예: 5" />
+      <div class="row end">
+        <button id="create-btn" class="primary">만들기</button>
+      </div>
+      <p id="create-status" class="status"></p>
+      <div id="recent" class="recent hidden">
+        <h3>최근 본 일정</h3>
+        <ul id="recent-list"></ul>
+      </div>
+    </section>
+
+    <!-- 방: 이름 입력 -->
+    <section id="view-login" class="card hidden">
+      <div class="row space share">
+        <span class="muted">이 링크를 단톡방에 공유하세요</span>
+        <button id="copy-btn" class="ghost">링크 복사</button>
+      </div>
+      <label for="name-input">이름</label>
+      <div class="row">
+        <input id="name-input" type="text" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+        <button id="enter-btn" class="primary">입장</button>
+      </div>
+      <p class="hint">같은 이름으로 다시 들어오면 이전에 고른 날짜를 이어서 수정할 수 있어요.</p>
+    </section>
+
+    <!-- 방: 내 날짜 선택 -->
+    <section id="view-pick" class="card hidden">
+      <div class="row space">
+        <div><strong id="me-label"></strong> 님, 되는 날짜를 눌러주세요</div>
+        <button id="logout-btn" class="ghost">이름 바꾸기</button>
+      </div>
+      <div class="toolbar" id="toolbar"></div>
+      <div class="calendar" id="pick-calendar"></div>
+      <div class="row space">
+        <span id="pick-count" class="muted"></span>
+        <span id="save-status" class="status"></span>
+      </div>
+      <div class="row space">
+        <button id="delete-btn" class="link danger">내 응답 삭제</button>
+        <button id="copy-btn2" class="ghost">링크 복사</button>
+      </div>
+    </section>
+
+    <!-- 방: 종합 -->
+    <section id="view-summary" class="card hidden">
+      <div class="row space">
+        <h2>전체 종합 <span id="people-count" class="muted"></span></h2>
+        <button id="refresh-btn" class="ghost">새로고침</button>
+      </div>
+      <div id="best" class="best"></div>
+      <div class="legend">
+        <span><i class="sw s0"></i>0명</span>
+        <span><i class="sw s2"></i>일부</span>
+        <span><i class="sw full"></i>전원</span>
+        <span class="muted">· 날짜를 누르면 누가 되는지 보여요</span>
+      </div>
+      <div class="calendar summary" id="summary-calendar"></div>
+      <div id="detail" class="detail hidden"></div>
+      <div id="people" class="people"></div>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js?v=1"></script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>
