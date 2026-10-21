@@ -144,6 +144,13 @@ button.link.danger { color: var(--danger); }
 .detail { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--bg); font-size: 14px; line-height: 1.6; }
 .detail .no { color: var(--muted); }
 
+.known { display: flex; flex-wrap: wrap; gap: 6px; }
+.known .chip.active { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+#pin-input { letter-spacing: 4px; }
+
+.day.past { opacity: .35; }
+#pick-calendar .day.past { cursor: default; }
+
 .people { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 .people .chip { padding: 4px 10px; }
 .people .chip.me { border-color: var(--primary); color: var(--primary); }

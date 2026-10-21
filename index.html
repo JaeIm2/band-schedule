@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>일정 맞추기</title>
-  <link rel="stylesheet" href="style.css?v=1" />
+  <link rel="stylesheet" href="style.css?v=__V__" />
 </head>
 <body>
   <main class="app">
@@ -48,12 +48,19 @@
         <span class="muted">이 링크를 단톡방에 공유하세요</span>
         <button id="copy-btn" class="ghost">링크 복사</button>
       </div>
+      <div id="known" class="hidden">
+        <label>이미 입력한 사람</label>
+        <div id="known-list" class="known"></div>
+      </div>
       <label for="name-input">이름</label>
+      <input id="name-input" type="text" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+      <label for="pin-input">PIN 4자리</label>
       <div class="row">
-        <input id="name-input" type="text" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+        <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
         <button id="enter-btn" class="primary">입장</button>
       </div>
-      <p class="hint">같은 이름으로 다시 들어오면 이전에 고른 날짜를 이어서 수정할 수 있어요.</p>
+      <p id="login-hint" class="hint">처음이면 아무 숫자 4자리를 정하세요. 다음에 같은 이름·PIN으로 들어오면 이어서 수정할 수 있어요.</p>
+      <p id="login-status" class="status err"></p>
     </section>
 
     <!-- 방: 내 날짜 선택 -->
@@ -97,7 +104,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=1"></script>
-  <script src="app.js?v=1"></script>
+  <script src="config.js?v=__V__"></script>
+  <script src="app.js?v=__V__"></script>
 </body>
 </html>

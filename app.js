@@ -61,12 +61,11 @@
       if (days < 1) return fail("종료일이 시작일보다 빨라요.");
       if (days > MAX_DAYS) return fail(`기간은 최대 ${MAX_DAYS}일까지 가능해요.`);
 
-      const id = randomId();
       $("create-btn").disabled = true;
       status.textContent = "만드는 중…";
-      const { error } = await sb.from("rooms").insert({
-        id, title, start_date: s, end_date: e,
-        total_people: Number.isFinite(total) && total > 0 ? total : null,
+      const { data: id, error } = await sb.rpc("create_room", {
+        p_title: title, p_start: s, p_end: e,
+        p_total: Number.isFinite(total) && total > 0 ? total : null,
       });
       $("create-btn").disabled = false;
       if (error) return fail("생성 실패: " + error.message);
@@ -74,22 +73,16 @@
     });
   }
 
-  function randomId() {
-    const chars = "abcdefghijkmnpqrstuvwxyz23456789";
-    const buf = new Uint8Array(8);
-    crypto.getRandomValues(buf);
-    return Array.from(buf, (b) => chars[b % chars.length]).join("");
-  }
-
   // =====================================================
   // 방
   // =====================================================
   async function initRoom(id) {
-    const { data: room, error } = await sb.from("rooms").select("*").eq("id", id).maybeSingle();
-    if (error || !room) {
+    const { data: init, error } = await sb.rpc("get_room", { p_id: id });
+    if (error || !init) {
       $("range-label").textContent = error ? "불러오기 실패: " + error.message : "없는 일정이에요. 링크를 확인해주세요.";
       return;
     }
+    const room = init.room;
 
     const start = parse(room.start_date);
     const DAYS = Math.round((parse(room.end_date) - start) / 86400000) + 1;
@@ -100,14 +93,17 @@
     const WEEKS = weekOf(DAYS - 1) + 1;
     const TOTAL = room.total_people;
     const nameKey = `bs:name:${id}`;
+    const isPast = (d) => d < TODAY_ISO;
+    const OPEN = ISO.filter((d) => !isPast(d)); // 오늘 이후라 고를 수 있는 날
 
     document.title = `${room.title} · 일정 맞추기`;
     $("title").textContent = room.title;
     $("range-label").textContent = `${fmt(dates[0])} ~ ${fmt(dates[DAYS - 1])}` + (TOTAL ? ` · ${TOTAL}명` : "");
 
     let me = null;
+    let myPin = null;
     let selected = new Set();
-    let all = []; // [{name, dates}]
+    let all = init.responses; // [{name, dates}]
     let detailIso = null;
     let focusName = null; // 참여자 칩을 누르면 그 사람 날짜만 보기
 
@@ -129,10 +125,11 @@
       b.addEventListener("click", fn);
       tb.appendChild(b);
     };
-    chip("전체 선택", "", () => { ISO.forEach((d) => selected.add(d)); changed(); });
+    chip("전체 선택", "", () => { OPEN.forEach((d) => selected.add(d)); changed(); });
     if (WEEKS > 1) {
       for (let w = 0; w < WEEKS; w++) {
-        const idx = ISO.map((_, i) => i).filter((i) => weekOf(i) === w);
+        const idx = ISO.map((_, i) => i).filter((i) => weekOf(i) === w && !isPast(ISO[i]));
+        if (!idx.length) continue;
         const a = dates[idx[0]], z = dates[idx[idx.length - 1]];
         chip(`${w + 1}주차 ${md(a)}~${md(z)}`, "", () => {
           const allOn = idx.every((i) => selected.has(ISO[i]));
@@ -142,7 +139,7 @@
       }
     }
     chip("주말만", "", () => {
-      ISO.forEach((d, i) => { if (dowIdx(dates[i]) >= 5) selected.add(d); });
+      ISO.forEach((d, i) => { if (dowIdx(dates[i]) >= 5 && !isPast(d)) selected.add(d); });
       changed();
     });
     chip("모두 해제", "danger", () => { selected.clear(); changed(); });
@@ -163,7 +160,7 @@
       }
       return dates.map((d, i) => {
         const el = document.createElement("div");
-        el.className = "day" + (dowIdx(d) === 6 ? " sun" : "") + (ISO[i] === TODAY_ISO ? " today" : "");
+        el.className = "day" + (dowIdx(d) === 6 ? " sun" : "") + (ISO[i] === TODAY_ISO ? " today" : "") + (isPast(ISO[i]) ? " past" : "");
         el.dataset.iso = ISO[i];
         el.innerHTML = `<div class="d">${d.getDate()}</div><div class="m">${d.getMonth() + 1}월</div>`;
         c.appendChild(el);
@@ -181,13 +178,13 @@
     const apply = (el) => {
       if (!el) return;
       const d = el.dataset.iso;
-      if (paint ? selected.has(d) : !selected.has(d)) return;
+      if (isPast(d) || (paint ? selected.has(d) : !selected.has(d))) return;
       paint ? selected.add(d) : selected.delete(d);
       renderPick();
     };
     $("pick-calendar").addEventListener("pointerdown", (e) => {
       const el = e.target.closest(".day[data-iso]");
-      if (!el) return;
+      if (!el || isPast(el.dataset.iso)) return;
       e.preventDefault();
       paint = !selected.has(el.dataset.iso);
       apply(el);
@@ -199,7 +196,7 @@
 
     function renderPick() {
       pickCells.forEach((el) => el.classList.toggle("on", selected.has(el.dataset.iso)));
-      $("pick-count").textContent = `${selected.size} / ${DAYS}일 선택`;
+      $("pick-count").textContent = `${OPEN.filter((d) => selected.has(d)).length} / ${OPEN.length}일 선택`;
     }
 
     // ---------- 저장 (자동) ----------
@@ -216,10 +213,12 @@
       const st = $("save-status");
       st.textContent = "저장 중…";
       const sorted = [...selected].sort();
-      const { error } = await sb.from("responses").upsert({
-        room_id: id, name: me, dates: sorted, updated_at: new Date().toISOString(),
-      });
-      if (error) { st.textContent = "저장 실패: " + error.message; st.classList.add("err"); return; }
+      const { error } = await sb.rpc("save_response", { p_room: id, p_name: me, p_pin: myPin, p_dates: sorted });
+      if (error) {
+        st.textContent = error.message === "wrong pin" ? "PIN이 맞지 않아 저장하지 못했어요" : "저장 실패: " + error.message;
+        st.classList.add("err");
+        return;
+      }
       st.textContent = "저장됨 ✓";
       const mine = all.find((p) => p.name === me);
       if (mine) mine.dates = sorted; else all.push({ name: me, dates: sorted });
@@ -228,9 +227,9 @@
 
     // ---------- 데이터 ----------
     async function load() {
-      const { data, error } = await sb.from("responses").select("name, dates").eq("room_id", id).order("updated_at");
-      if (error) { toast("불러오기 실패: " + error.message); return false; }
-      all = data;
+      const { data, error } = await sb.rpc("get_room", { p_id: id });
+      if (error || !data) { toast("불러오기 실패" + (error ? ": " + error.message : "")); return false; }
+      all = data.responses;
       return true;
     }
 
@@ -246,18 +245,20 @@
     function whoOn(d) { return all.filter((p) => p.dates.includes(d)).map((p) => p.name); }
 
     function renderSummary() {
-      const n = all.length;
+      // 남은 날짜를 하나도 안 고른 사람은 집계에서 뺀다 (전원 기준이 막히지 않게)
+      const act = all.filter((p) => p.dates.some((d) => !isPast(d)));
+      const n = act.length;
       const denom = TOTAL || n || 1;
       $("people-count").textContent = TOTAL ? `(${n}/${TOTAL}명 입력)` : `(${n}명 입력)`;
 
-      const focus = all.find((p) => p.name === focusName);
+      const focus = act.find((p) => p.name === focusName);
       if (!focus) focusName = null;
       show($("legend"), !focus);
       const fb = $("focus");
       fb.innerHTML = "";
       if (focus) {
         const t = document.createElement("span");
-        t.textContent = `${focus.name} 님이 고른 날짜 (${focus.dates.length}일)`;
+        t.textContent = `${focus.name} 님이 고른 날짜 (${focus.dates.filter((d) => !isPast(d)).length}일)`;
         const b = document.createElement("button");
         b.className = "link";
         b.textContent = "전체 보기";
@@ -266,7 +267,7 @@
       }
       show(fb, !!focus);
 
-      const counts = ISO.map((d) => whoOn(d));
+      const counts = ISO.map((d) => isPast(d) ? [] : whoOn(d));
       sumCells.forEach((el, i) => {
         const names = counts[i];
         const full = !focus && names.length > 0 && names.length >= denom;
@@ -305,7 +306,7 @@
           const ol = document.createElement("ol");
           ranked.slice(0, 5).forEach((x) => {
             const li = document.createElement("li");
-            const missing = all.map((p) => p.name).filter((nm) => !counts[x.i].includes(nm));
+            const missing = act.map((p) => p.name).filter((nm) => !counts[x.i].includes(nm));
             li.textContent = `${fmt(dates[x.i])} — ${x.c}명`;
             if (missing.length) {
               const s = document.createElement("span");
@@ -323,7 +324,7 @@
       const det = $("detail");
       if (detailIso) {
         const yes = whoOn(detailIso);
-        const no = all.map((p) => p.name).filter((nm) => !yes.includes(nm));
+        const no = act.map((p) => p.name).filter((nm) => !yes.includes(nm));
         det.innerHTML = "";
         const h = document.createElement("strong"); h.textContent = fmt(parse(detailIso)); det.appendChild(h);
         const y = document.createElement("div"); y.textContent = `되는 사람 (${yes.length}): ${yes.join(", ") || "-"}`; det.appendChild(y);
@@ -334,19 +335,24 @@
       // 참여자 목록
       const pl = $("people");
       pl.innerHTML = "";
-      all.forEach((p) => {
+      act.forEach((p) => {
         const s = document.createElement("button");
         s.className = "chip" + (p.name === me ? " me" : "") + (p.name === focusName ? " active" : "");
-        s.textContent = `${p.name} · ${p.dates.length}일`;
+        s.textContent = `${p.name} · ${p.dates.filter((d) => !isPast(d)).length}일`;
         s.addEventListener("click", () => { focusName = focusName === p.name ? null : p.name; renderSummary(); });
         pl.appendChild(s);
       });
     }
 
     // ---------- 로그인 ----------
-    async function enter(name) {
+    // 이름+PIN 확인 후 입장. PIN이 틀리면 false
+    async function enter(name, pin) {
+      const { data: ok, error } = await sb.rpc("check_pin", { p_room: id, p_name: name, p_pin: pin });
+      if (error) { toast("확인 실패: " + error.message); return false; }
+      if (!ok) return false;
       me = name;
-      store.set(nameKey, name);
+      myPin = pin;
+      store.set(nameKey, { name, pin });
       await load();
       const mine = all.find((p) => p.name === me);
       selected = new Set(mine ? mine.dates : []);
@@ -357,41 +363,79 @@
       show($("view-summary"), true);
       renderPick();
       renderSummary();
+      return true;
     }
 
-    $("enter-btn").addEventListener("click", () => {
-      const v = $("name-input").value.trim();
-      if (v) enter(v); else $("name-input").focus();
+    // 입장 화면: 이미 입력한 사람 목록 + 이름에 맞는 안내
+    function renderLogin() {
+      const name = $("name-input").value.trim();
+      const kl = $("known-list");
+      kl.innerHTML = "";
+      all.forEach((p) => {
+        const b = document.createElement("button");
+        b.className = "chip" + (p.name === name ? " active" : "");
+        b.textContent = p.name;
+        b.addEventListener("click", () => {
+          $("name-input").value = p.name;
+          renderLogin();
+          $("pin-input").focus();
+        });
+        kl.appendChild(b);
+      });
+      show($("known"), all.length > 0);
+      $("login-hint").textContent = all.some((p) => p.name === name)
+        ? "처음 정한 PIN 4자리를 입력하세요."
+        : "처음이면 아무 숫자 4자리를 정하세요. 다음에 같은 이름·PIN으로 들어오면 이어서 수정할 수 있어요.";
+    }
+
+    $("enter-btn").addEventListener("click", async () => {
+      const name = $("name-input").value.trim();
+      const pin = $("pin-input").value.trim();
+      const st = $("login-status");
+      st.textContent = "";
+      if (!name) { $("name-input").focus(); return; }
+      if (!/^[0-9]{4}$/.test(pin)) { st.textContent = "PIN은 숫자 4자리예요."; $("pin-input").focus(); return; }
+      $("enter-btn").disabled = true;
+      const ok = await enter(name, pin);
+      $("enter-btn").disabled = false;
+      if (!ok) st.textContent = "PIN이 맞지 않아요.";
     });
-    $("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) $("enter-btn").click(); });
+    $("name-input").addEventListener("input", renderLogin);
+    $("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) $("pin-input").focus(); });
+    $("pin-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("enter-btn").click(); });
     $("logout-btn").addEventListener("click", () => {
       me = null;
+      myPin = null;
       store.del(nameKey);
       $("name-input").value = "";
+      $("pin-input").value = "";
+      $("login-status").textContent = "";
+      renderLogin();
+      renderSummary();
       show($("view-pick"), false);
       show($("view-login"), true);
     });
     $("delete-btn").addEventListener("click", async () => {
       if (!confirm(`'${me}' 응답을 삭제할까요?`)) return;
       clearTimeout(saveTimer);
-      const { error } = await sb.from("responses").delete().eq("room_id", id).eq("name", me);
+      const { error } = await sb.rpc("delete_response", { p_room: id, p_name: me, p_pin: myPin });
       if (error) { toast("삭제 실패: " + error.message); return; }
       all = all.filter((p) => p.name !== me);
       $("logout-btn").click();
       renderSummary();
       toast("삭제했어요");
     });
-    $("refresh-btn").addEventListener("click", async () => { if (await load()) { renderSummary(); toast("새로고침했어요"); } });
-    document.addEventListener("visibilitychange", async () => {
-      if (document.visibilityState === "visible" && await load()) renderSummary();
-    });
+    const reload = async () => { if (!(await load())) return false; renderSummary(); if (!me) renderLogin(); return true; };
+    $("refresh-btn").addEventListener("click", async () => { if (await reload()) toast("새로고침했어요"); });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reload(); });
 
+    // 이 브라우저에 저장된 이름·PIN이 있으면 자동 입장 (예전 버전은 이름만 저장돼 있어 다시 입력받음)
     const saved = store.get(nameKey, null);
-    if (saved) enter(saved);
-    else {
+    if (!(saved && saved.pin && await enter(saved.name, saved.pin))) {
+      store.del(nameKey);
       show($("view-login"), true);
       show($("view-summary"), true);
-      await load();
+      renderLogin();
       renderSummary();
     }
   }
