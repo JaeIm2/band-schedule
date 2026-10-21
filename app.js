@@ -63,13 +63,13 @@
 
       $("create-btn").disabled = true;
       status.textContent = "만드는 중…";
-      const { data: id, error } = await sb.rpc("create_room", {
+      const { data, error } = await sb.rpc("create_room", {
         p_title: title, p_start: s, p_end: e,
         p_total: Number.isFinite(total) && total > 0 ? total : null,
       });
       $("create-btn").disabled = false;
       if (error) return fail("생성 실패: " + error.message);
-      location.href = `?r=${id}`;
+      location.href = `?r=${data.id}&admin=${data.admin_key}&new=1`;
     });
   }
 
@@ -106,6 +106,7 @@
     let all = init.responses; // [{name, dates}]
     let detailIso = null;
     let focusName = null; // 참여자 칩을 누르면 그 사람 날짜만 보기
+    const openLevels = new Set(); // 펼쳐둔 "N명 되는 날" 묶음
 
     // ---------- 링크 복사 ----------
     const copyLink = async () => {
@@ -223,6 +224,7 @@
       const mine = all.find((p) => p.name === me);
       if (mine) mine.dates = sorted; else all.push({ name: me, dates: sorted });
       renderSummary();
+      renderAdmin();
     }
 
     // ---------- 데이터 ----------
@@ -284,40 +286,52 @@
         el.querySelector(".cnt").textContent = !focus && names.length ? `${names.length}/${denom}` : "";
       });
 
-      // 베스트 날짜
+      // 베스트 날짜: 인원수별로 묶어서, 1등 묶음만 펼쳐 보여준다
       const best = $("best");
       best.innerHTML = "";
-      if (!n) { best.textContent = "아직 아무도 입력하지 않았어요."; }
+      const groups = new Map(); // 인원수 → [날짜 인덱스]
+      counts.forEach((names, i) => {
+        if (!names.length) return;
+        if (!groups.has(names.length)) groups.set(names.length, []);
+        groups.get(names.length).push(i);
+      });
+      const levels = [...groups.keys()].sort((x, y) => y - x);
+      if (!n) best.textContent = "아직 아무도 입력하지 않았어요.";
+      else if (!levels.length) best.textContent = "겹치는 날짜가 없어요.";
       else {
-        const ranked = ISO.map((d, i) => ({ i, c: counts[i].length })).filter((x) => x.c > 0)
-          .sort((a, b) => b.c - a.c || a.i - b.i);
-        const fullDays = ranked.filter((x) => x.c >= denom);
-        const line = document.createElement("div");
-        if (fullDays.length) {
-          line.innerHTML = `<b class="full">전원 가능:</b> `;
-          line.append(fullDays.sort((a, b) => a.i - b.i).map((x) => fmt(dates[x.i])).join(", "));
-        } else if (ranked.length) {
-          line.innerHTML = `<b>전원 되는 날은 없어요.</b> 많이 되는 날 순:`;
-        } else {
-          line.textContent = "겹치는 날짜가 없어요.";
-        }
-        best.appendChild(line);
-        if (!fullDays.length && ranked.length) {
-          const ol = document.createElement("ol");
-          ranked.slice(0, 5).forEach((x) => {
-            const li = document.createElement("li");
-            const missing = act.map((p) => p.name).filter((nm) => !counts[x.i].includes(nm));
-            li.textContent = `${fmt(dates[x.i])} — ${x.c}명`;
-            if (missing.length) {
-              const s = document.createElement("span");
-              s.className = "muted";
-              s.textContent = `(안 됨: ${missing.join(", ")})`;
-              li.appendChild(s);
-            }
-            ol.appendChild(li);
+        const wrap = document.createElement("div");
+        wrap.className = "groups";
+        levels.forEach((c, gi) => {
+          const full = c >= denom;
+          const label = full ? `전원 가능 (${c}/${denom}명)` : `${c}/${denom}명 되는 날`;
+          const g = document.createElement(gi === 0 ? "div" : "details");
+          g.className = "group";
+          const head = document.createElement(gi === 0 ? "div" : "summary");
+          if (gi === 0) {
+            head.className = "head" + (full ? " full" : "");
+            head.textContent = full ? label : `전원 되는 날은 없어요 · 가장 많이 되는 날 (${c}/${denom}명)`;
+          } else head.textContent = `${label} ${groups.get(c).length}개`;
+          g.appendChild(head);
+          const ds = document.createElement("div");
+          ds.className = "dates";
+          groups.get(c).forEach((i) => {
+            const b = document.createElement("button");
+            b.className = "chip" + (dowIdx(dates[i]) === 6 ? " sun" : "") + (ISO[i] === detailIso ? " sel" : "");
+            b.textContent = `${md(dates[i])}(${DOW[dowIdx(dates[i])]})`;
+            b.addEventListener("click", () => {
+              detailIso = detailIso === ISO[i] ? null : ISO[i];
+              renderSummary();
+              if (detailIso) $("detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+            });
+            ds.appendChild(b);
           });
-          best.appendChild(ol);
-        }
+          g.appendChild(ds);
+          // 다시 그릴 때 사용자가 펼쳐둔 묶음은 유지
+          if (gi > 0 && (openLevels.has(c) || groups.get(c).includes(ISO.indexOf(detailIso)))) g.open = true;
+          if (gi > 0) g.addEventListener("toggle", () => g.open ? openLevels.add(c) : openLevels.delete(c));
+          wrap.appendChild(g);
+        });
+        best.appendChild(wrap);
       }
 
       // 선택한 날짜 상세
@@ -425,7 +439,102 @@
       renderSummary();
       toast("삭제했어요");
     });
-    const reload = async () => { if (!(await load())) return false; renderSummary(); if (!me) renderLogin(); return true; };
+    // ---------- 관리 (관리 링크로 들어온 경우) ----------
+    const params = new URLSearchParams(location.search);
+    const adminStoreKey = `bs:admin:${id}`;
+    let adminKey = params.get("admin") || store.get(adminStoreKey, null);
+    if (adminKey) {
+      const { data: isAdmin } = await sb.rpc("check_admin", { p_room: id, p_key: adminKey });
+      if (isAdmin) store.set(adminStoreKey, adminKey);
+      else { store.del(adminStoreKey); adminKey = null; }
+    }
+    // 주소창에서 관리 키를 지워서, 주소를 그대로 복사해 공유해도 새지 않게
+    if (params.has("admin")) history.replaceState(null, "", `?r=${id}`);
+
+    const adminCall = async (fn, args) => {
+      const { error } = await sb.rpc(fn, { p_room: id, p_key: adminKey, ...args });
+      if (error) toast(error.message === "not admin" ? "관리 권한이 없어요" : "실패: " + error.message);
+      return !error;
+    };
+
+    function renderAdmin() {
+      if (!adminKey) return;
+      const box = $("a-people");
+      box.innerHTML = "";
+      if (!all.length) box.textContent = "아직 없어요.";
+      all.forEach((p) => {
+        const row = document.createElement("div");
+        row.className = "item";
+        const nm = document.createElement("span");
+        nm.textContent = `${p.name} · ${p.dates.filter((d) => !isPast(d)).length}일`;
+        const acts = document.createElement("span");
+        acts.className = "acts";
+        const reset = document.createElement("button");
+        reset.className = "link";
+        reset.textContent = "PIN 초기화";
+        reset.addEventListener("click", async () => {
+          if (!confirm(`'${p.name}' PIN을 초기화할까요? 다음에 입력하는 숫자가 새 PIN이 돼요.`)) return;
+          if (await adminCall("admin_reset_pin", { p_name: p.name })) toast("PIN을 초기화했어요");
+        });
+        const del = document.createElement("button");
+        del.className = "link danger";
+        del.textContent = "삭제";
+        del.addEventListener("click", async () => {
+          if (!confirm(`'${p.name}' 응답을 삭제할까요?`)) return;
+          if (await adminCall("admin_delete_response", { p_name: p.name })) {
+            if (p.name === me) $("logout-btn").click();
+            await reload();
+            toast("삭제했어요");
+          }
+        });
+        acts.append(reset, del);
+        row.append(nm, acts);
+        box.appendChild(row);
+      });
+    }
+
+    if (adminKey) {
+      show($("view-admin"), true);
+      if (params.has("new")) $("view-admin").open = true;
+      $("a-title").value = room.title;
+      $("a-start").value = room.start_date;
+      $("a-end").value = room.end_date;
+      $("a-total").value = room.total_people || "";
+      $("admin-copy-btn").addEventListener("click", async () => {
+        const url = location.origin + location.pathname + `?r=${id}&admin=${adminKey}`;
+        try { await navigator.clipboard.writeText(url); toast("관리 링크를 복사했어요"); }
+        catch { prompt("관리 링크를 복사하세요", url); }
+      });
+      $("a-save-btn").addEventListener("click", async () => {
+        const st = $("a-status");
+        st.classList.add("err");
+        const title = $("a-title").value.trim();
+        const s = $("a-start").value, e = $("a-end").value;
+        const total = parseInt($("a-total").value, 10);
+        if (!title) { st.textContent = "제목을 입력해주세요."; return; }
+        if (!s || !e) { st.textContent = "기간을 입력해주세요."; return; }
+        const days = Math.round((parse(e) - parse(s)) / 86400000) + 1;
+        if (days < 1) { st.textContent = "종료일이 시작일보다 빨라요."; return; }
+        if (days > MAX_DAYS) { st.textContent = `기간은 최대 ${MAX_DAYS}일까지 가능해요.`; return; }
+        st.textContent = "";
+        const ok = await adminCall("admin_update_room", {
+          p_title: title, p_start: s, p_end: e,
+          p_total: Number.isFinite(total) && total > 0 ? total : null,
+        });
+        if (ok) location.reload();
+      });
+      $("a-delete-room-btn").addEventListener("click", async () => {
+        if (!confirm("이 일정을 삭제할까요? 모든 응답이 함께 지워지고 되돌릴 수 없어요.")) return;
+        if (await adminCall("admin_delete_room", {})) {
+          store.del(adminStoreKey);
+          store.del(nameKey);
+          location.href = "./";
+        }
+      });
+      renderAdmin();
+    }
+
+    const reload = async () => { if (!(await load())) return false; renderSummary(); renderAdmin(); if (!me) renderLogin(); return true; };
     $("refresh-btn").addEventListener("click", async () => { if (await reload()) toast("새로고침했어요"); });
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reload(); });
 

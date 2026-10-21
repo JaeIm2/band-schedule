@@ -66,6 +66,7 @@ input {
   color: var(--text);
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid2 > div, input { min-width: 0; }
 
 .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
 .row:first-child { margin-top: 0; }
@@ -129,10 +130,6 @@ button.link.danger { color: var(--danger); }
 .summary .day.sel { outline: 2px solid var(--text); outline-offset: -2px; }
 
 .best { margin: 14px 0 10px; font-size: 15px; line-height: 1.6; }
-.best b.full { color: var(--full); }
-.best ol { margin: 6px 0 0; padding-left: 20px; }
-.best li { font-size: 14px; }
-.best li .muted { margin-left: 4px; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; margin-bottom: 12px; align-items: center; }
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -150,6 +147,30 @@ button.link.danger { color: var(--danger); }
 
 .day.past { opacity: .35; }
 #pick-calendar .day.past { cursor: default; }
+
+.admin summary { cursor: pointer; list-style: none; }
+.admin summary::-webkit-details-marker { display: none; }
+.admin summary::before { content: "▸ "; color: var(--muted); }
+.admin[open] summary::before { content: "▾ "; }
+.warn { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: rgba(217, 54, 54, .08); color: var(--danger); font-size: 13px; line-height: 1.5; }
+.a-people { display: flex; flex-direction: column; }
+.a-people .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.a-people .item:first-child { border-top: none; }
+.a-people .acts { display: flex; gap: 12px; }
+
+.groups { margin-top: 10px; }
+.group { padding: 10px 0; border-top: 1px solid var(--border); }
+.group:first-child { border-top: none; padding-top: 0; }
+.group summary { cursor: pointer; list-style: none; font-size: 14px; color: var(--muted); }
+.group summary::-webkit-details-marker { display: none; }
+.group summary::before { content: "▸ "; }
+.group[open] summary::before { content: "▾ "; }
+.group .head { font-size: 14px; font-weight: 700; }
+.group .head.full { color: var(--full); }
+.dates { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dates .chip { padding: 4px 10px; }
+.dates .chip.sun { color: var(--sun); }
+.dates .chip.sel { background: var(--text); border-color: var(--text); color: var(--bg); }
 
 .people { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 .people .chip { padding: 4px 10px; }

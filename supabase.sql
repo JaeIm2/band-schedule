@@ -48,28 +48,6 @@ language sql stable security definer set search_path = public as $$
   from (select 1) _ left join rooms r on r.id = p_id;
 $$;
 
-create or replace function create_room(p_title text, p_start date, p_end date, p_total int) returns text
-language plpgsql security definer set search_path = public, extensions as $$
-declare
-  v_id text;
-  chars text := 'abcdefghijkmnpqrstuvwxyz23456789';
-  b bytea;
-  i int;
-begin
-  p_title := trim(p_title);
-  if p_title = '' or length(p_title) > 40 then raise exception 'invalid title'; end if;
-  if p_end < p_start or p_end - p_start > 61 then raise exception 'invalid range'; end if;
-  loop
-    b := gen_random_bytes(8);
-    v_id := '';
-    for i in 0..7 loop v_id := v_id || substr(chars, 1 + get_byte(b, i) % 32, 1); end loop;
-    exit when not exists (select 1 from rooms where id = v_id);
-  end loop;
-  insert into rooms (id, title, start_date, end_date, total_people)
-  values (v_id, p_title, p_start, p_end, case when p_total between 1 and 50 then p_total end);
-  return v_id;
-end $$;
-
 -- 입장 시 PIN 확인: 없는 이름이거나 PIN 미설정(구버전 응답)이면 true
 create or replace function check_pin(p_room text, p_name text, p_pin text) returns boolean
 language sql stable security definer set search_path = public, extensions as $$
@@ -106,9 +84,87 @@ begin
   delete from responses where room_id = p_room and name = p_name;
 end $$;
 
-revoke all on function get_room(text), create_room(text, date, date, int),
+revoke all on function get_room(text),
   check_pin(text, text, text), save_response(text, text, text, text[]),
   delete_response(text, text, text) from public;
-grant execute on function get_room(text), create_room(text, date, date, int),
+grant execute on function get_room(text),
   check_pin(text, text, text), save_response(text, text, text, text[]),
   delete_response(text, text, text) to anon, authenticated;
+
+-- =====================================================
+-- 관리 링크: 방 만들 때 비밀 키를 한 번 발급, 그 키로만 방 수정·삭제·PIN 초기화
+-- =====================================================
+alter table rooms add column if not exists admin_hash text;
+
+drop function if exists create_room(text, date, date, int);
+create or replace function create_room(p_title text, p_start date, p_end date, p_total int) returns json
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v_id text;
+  v_key text := '';
+  chars text := 'abcdefghijkmnpqrstuvwxyz23456789';
+  b bytea;
+  i int;
+begin
+  p_title := trim(p_title);
+  if p_title = '' or length(p_title) > 40 then raise exception 'invalid title'; end if;
+  if p_end < p_start or p_end - p_start > 61 then raise exception 'invalid range'; end if;
+  loop
+    b := gen_random_bytes(8);
+    v_id := '';
+    for i in 0..7 loop v_id := v_id || substr(chars, 1 + get_byte(b, i) % 32, 1); end loop;
+    exit when not exists (select 1 from rooms where id = v_id);
+  end loop;
+  b := gen_random_bytes(16);
+  for i in 0..15 loop v_key := v_key || substr(chars, 1 + get_byte(b, i) % 32, 1); end loop;
+  insert into rooms (id, title, start_date, end_date, total_people, admin_hash)
+  values (v_id, p_title, p_start, p_end, case when p_total between 1 and 50 then p_total end,
+          encode(digest(v_key, 'sha256'), 'hex'));
+  return json_build_object('id', v_id, 'admin_key', v_key);
+end $$;
+
+create or replace function check_admin(p_room text, p_key text) returns boolean
+language sql stable security definer set search_path = public, extensions as $$
+  select coalesce((select admin_hash = encode(digest(p_key, 'sha256'), 'hex')
+                   from rooms where id = p_room), false);
+$$;
+
+create or replace function admin_update_room(p_room text, p_key text, p_title text, p_start date, p_end date, p_total int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not check_admin(p_room, p_key) then raise exception 'not admin'; end if;
+  p_title := trim(p_title);
+  if p_title = '' or length(p_title) > 40 then raise exception 'invalid title'; end if;
+  if p_end < p_start or p_end - p_start > 61 then raise exception 'invalid range'; end if;
+  update rooms set title = p_title, start_date = p_start, end_date = p_end,
+         total_people = case when p_total between 1 and 50 then p_total end
+   where id = p_room;
+end $$;
+
+create or replace function admin_delete_room(p_room text, p_key text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not check_admin(p_room, p_key) then raise exception 'not admin'; end if;
+  delete from rooms where id = p_room;
+end $$;
+
+create or replace function admin_reset_pin(p_room text, p_key text, p_name text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not check_admin(p_room, p_key) then raise exception 'not admin'; end if;
+  update responses set pin_hash = null where room_id = p_room and name = p_name;
+end $$;
+
+create or replace function admin_delete_response(p_room text, p_key text, p_name text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not check_admin(p_room, p_key) then raise exception 'not admin'; end if;
+  delete from responses where room_id = p_room and name = p_name;
+end $$;
+
+revoke all on function create_room(text, date, date, int), check_admin(text, text),
+  admin_update_room(text, text, text, date, date, int), admin_delete_room(text, text),
+  admin_reset_pin(text, text, text), admin_delete_response(text, text, text) from public;
+grant execute on function create_room(text, date, date, int), check_admin(text, text),
+  admin_update_room(text, text, text, date, date, int), admin_delete_room(text, text),
+  admin_reset_pin(text, text, text), admin_delete_response(text, text, text) to anon, authenticated;

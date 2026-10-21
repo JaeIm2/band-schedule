@@ -4,6 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>일정 맞추기</title>
+  <meta name="description" content="되는 날만 눌러주면 전원 가능한 날을 뽑아줘요" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="일정 맞추기" />
+  <meta property="og:description" content="되는 날만 눌러주면 전원 가능한 날을 뽑아줘요" />
+  <meta property="og:image" content="https://jaeim2.github.io/band-schedule/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="stylesheet" href="style.css?v=__V__" />
 </head>
 <body>
@@ -41,6 +49,38 @@
       </div>
       <p id="create-status" class="status"></p>
     </section>
+
+    <!-- 방: 관리 (관리 링크로 들어온 사람만) -->
+    <details id="view-admin" class="card admin hidden">
+      <summary><strong>관리</strong> <span class="muted">관리 링크로 들어와서 보여요</span></summary>
+      <p class="warn">관리 링크는 다시 볼 수 없어요. 잃어버리면 이 방을 수정할 수 없으니 꼭 따로 저장해두세요. 단톡방에는 일반 링크만 공유하세요.</p>
+      <div class="row"><button id="admin-copy-btn" class="ghost">관리 링크 복사</button></div>
+
+      <label for="a-title">제목</label>
+      <input id="a-title" type="text" maxlength="40" autocomplete="off" />
+      <div class="grid2">
+        <div>
+          <label for="a-start">시작일</label>
+          <input id="a-start" type="date" />
+        </div>
+        <div>
+          <label for="a-end">종료일</label>
+          <input id="a-end" type="date" />
+        </div>
+      </div>
+      <label for="a-total">인원 <span class="muted">(비우면 입력한 사람 기준)</span></label>
+      <input id="a-total" type="number" min="1" max="50" />
+      <div class="row end"><button id="a-save-btn" class="primary">변경 저장</button></div>
+      <p id="a-status" class="status"></p>
+
+      <label>참여자 <span class="muted">(PIN을 잊었으면 초기화 → 다음에 입력하는 숫자가 새 PIN)</span></label>
+      <div id="a-people" class="a-people"></div>
+
+      <div class="row space">
+        <span></span>
+        <button id="a-delete-room-btn" class="link danger">이 일정 삭제</button>
+      </div>
+    </details>
 
     <!-- 방: 이름 입력 -->
     <section id="view-login" class="card hidden">
