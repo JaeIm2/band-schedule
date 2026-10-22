@@ -1,0 +1,23 @@
+name: Keep Supabase awake
+
+# Supabase 무료 플랜은 1주일 동안 요청이 없으면 프로젝트가 일시정지된다.
+# 3일마다 API를 한 번 호출해서 깨워둔다. (키는 config.js 에 이미 공개된 publishable key)
+on:
+  schedule:
+    - cron: "0 3 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          URL=$(sed -n 's/.*SUPABASE_URL: "\(.*\)".*/\1/p' config.js)
+          KEY=$(sed -n 's/.*SUPABASE_KEY: "\(.*\)".*/\1/p' config.js)
+          curl -sf -X POST "$URL/rest/v1/rpc/get_room" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" \
+            -d '{"p_id":"keepalive"}'

@@ -13,6 +13,7 @@
   const dowIdx = (d) => (d.getDay() + 6) % 7; // 월=0
   const fmt = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[dowIdx(d)]})`;
   const md = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+  const parseMembers = (v) => v.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const TODAY_ISO = iso(today);
 
@@ -53,6 +54,7 @@
       const title = $("c-title").value.trim();
       const s = $("c-start").value, e = $("c-end").value;
       const total = parseInt($("c-total").value, 10);
+      const members = parseMembers($("c-members").value);
       const fail = (m) => { status.textContent = m; status.classList.add("err"); };
 
       if (!title) return fail("제목을 입력해주세요.");
@@ -66,6 +68,7 @@
       const { data, error } = await sb.rpc("create_room", {
         p_title: title, p_start: s, p_end: e,
         p_total: Number.isFinite(total) && total > 0 ? total : null,
+        p_members: members,
       });
       $("create-btn").disabled = false;
       if (error) return fail("생성 실패: " + error.message);
@@ -92,13 +95,31 @@
     const weekOf = (i) => Math.floor((i + leadPad) / 7); // 달력 줄 기준 주차
     const WEEKS = weekOf(DAYS - 1) + 1;
     const TOTAL = room.total_people;
+    const MEMBERS = room.members || []; // 미리 등록한 멤버 (비면 누구나 입장)
     const nameKey = `bs:name:${id}`;
     const isPast = (d) => d < TODAY_ISO;
     const OPEN = ISO.filter((d) => !isPast(d)); // 오늘 이후라 고를 수 있는 날
+    const OPEN_SET = new Set(OPEN);
+    // 지금 기간 안에서 아직 지나지 않은 날만 (기간을 줄였거나 지난 날짜는 제외)
+    const live = (p) => p.dates.filter((d) => OPEN_SET.has(d));
+    let confirmed = room.confirmed_date; // 관리자가 확정한 날짜
+
+    // ---------- 관리 키 확인 (관리 링크로 들어온 경우) ----------
+    const params = new URLSearchParams(location.search);
+    const adminStoreKey = `bs:admin:${id}`;
+    let adminKey = params.get("admin") || store.get(adminStoreKey, null);
+    if (adminKey) {
+      const { data: isAdmin } = await sb.rpc("check_admin", { p_room: id, p_key: adminKey });
+      if (isAdmin) store.set(adminStoreKey, adminKey);
+      else { store.del(adminStoreKey); adminKey = null; }
+    }
+    // 주소창에서 관리 키를 지워서, 주소를 그대로 복사해 공유해도 새지 않게
+    if (params.has("admin")) history.replaceState(null, "", `?r=${id}`);
 
     document.title = `${room.title} · 일정 맞추기`;
     $("title").textContent = room.title;
-    $("range-label").textContent = `${fmt(dates[0])} ~ ${fmt(dates[DAYS - 1])}` + (TOTAL ? ` · ${TOTAL}명` : "");
+    const HEAD = TOTAL || MEMBERS.length; // 정해진 인원 (없으면 입력한 사람 기준)
+    $("range-label").textContent = `${fmt(dates[0])} ~ ${fmt(dates[DAYS - 1])}` + (HEAD ? ` · ${HEAD}명` : "");
 
     let me = null;
     let myPin = null;
@@ -116,6 +137,37 @@
     };
     $("copy-btn").addEventListener("click", copyLink);
     $("copy-btn2").addEventListener("click", copyLink);
+
+    // ---------- 확정된 날짜 ----------
+    const ymd = (d) => iso(d).replace(/-/g, "");
+    const shareUrl = () => location.origin + location.pathname + `?r=${id}`;
+    function renderConfirmed() {
+      show($("view-confirmed"), !!confirmed);
+      if (!confirmed) return;
+      const d = parse(confirmed);
+      $("confirmed-date").textContent = fmt(d);
+      $("gcal-link").href = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        + `&text=${encodeURIComponent(room.title)}&dates=${ymd(d)}/${ymd(addDays(d, 1))}`
+        + `&details=${encodeURIComponent(shareUrl())}`;
+    }
+    $("ics-btn").addEventListener("click", () => {
+      const d = parse(confirmed);
+      const esc = (t) => t.replace(/[\\;,]/g, (c) => "\\" + c);
+      const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+      const ics = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//schedule//KO", "BEGIN:VEVENT",
+        `UID:${id}-${ymd(d)}@jaeim2.github.io`, `DTSTAMP:${stamp}`,
+        `DTSTART;VALUE=DATE:${ymd(d)}`, `DTEND;VALUE=DATE:${ymd(addDays(d, 1))}`,
+        `SUMMARY:${esc(room.title)}`, `DESCRIPTION:${esc(shareUrl())}`,
+        "END:VEVENT", "END:VCALENDAR",
+      ].join("\r\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+      a.download = `${room.title}.ics`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+    renderConfirmed();
 
     // ---------- 툴바 ----------
     const tb = $("toolbar");
@@ -232,6 +284,8 @@
       const { data, error } = await sb.rpc("get_room", { p_id: id });
       if (error || !data) { toast("불러오기 실패" + (error ? ": " + error.message : "")); return false; }
       all = data.responses;
+      confirmed = data.room.confirmed_date;
+      renderConfirmed();
       return true;
     }
 
@@ -248,10 +302,13 @@
 
     function renderSummary() {
       // 남은 날짜를 하나도 안 고른 사람은 집계에서 뺀다 (전원 기준이 막히지 않게)
-      const act = all.filter((p) => p.dates.some((d) => !isPast(d)));
+      const act = all.filter((p) => live(p).length && (!MEMBERS.length || MEMBERS.includes(p.name)));
       const n = act.length;
-      const denom = TOTAL || n || 1;
-      $("people-count").textContent = TOTAL ? `(${n}/${TOTAL}명 입력)` : `(${n}명 입력)`;
+      const denom = HEAD || n || 1;
+      $("people-count").textContent = HEAD ? `(${n}/${HEAD}명 입력)` : `(${n}명 입력)`;
+      const pending = MEMBERS.filter((m) => !act.some((p) => p.name === m));
+      $("pending").textContent = `아직 안 한 사람: ${pending.join(", ")}`;
+      show($("pending"), pending.length > 0);
 
       const focus = act.find((p) => p.name === focusName);
       if (!focus) focusName = null;
@@ -260,7 +317,7 @@
       fb.innerHTML = "";
       if (focus) {
         const t = document.createElement("span");
-        t.textContent = `${focus.name} 님이 고른 날짜 (${focus.dates.filter((d) => !isPast(d)).length}일)`;
+        t.textContent = `${focus.name} 님이 고른 날짜 (${live(focus).length}일)`;
         const b = document.createElement("button");
         b.className = "link";
         b.textContent = "전체 보기";
@@ -269,13 +326,15 @@
       }
       show(fb, !!focus);
 
-      const counts = ISO.map((d) => isPast(d) ? [] : whoOn(d));
+      const actNames = act.map((p) => p.name);
+      const counts = ISO.map((d) => isPast(d) ? [] : whoOn(d).filter((nm) => actNames.includes(nm)));
       sumCells.forEach((el, i) => {
         const names = counts[i];
         const full = !focus && names.length > 0 && names.length >= denom;
         el.classList.toggle("full", full);
         el.classList.toggle("pick", !!focus && focus.dates.includes(ISO[i]));
         el.classList.toggle("sel", el.dataset.iso === detailIso);
+        el.classList.toggle("confirmed", el.dataset.iso === confirmed);
         el.style.background = focus || full || !names.length ? "" : `rgba(var(--heat), ${0.12 + 0.55 * (names.length / denom)})`;
         let extra = el.querySelector(".names");
         if (!extra) {
@@ -337,12 +396,30 @@
       // 선택한 날짜 상세
       const det = $("detail");
       if (detailIso) {
-        const yes = whoOn(detailIso);
-        const no = act.map((p) => p.name).filter((nm) => !yes.includes(nm));
+        const yes = whoOn(detailIso).filter((nm) => actNames.includes(nm));
+        const no = actNames.filter((nm) => !yes.includes(nm));
         det.innerHTML = "";
         const h = document.createElement("strong"); h.textContent = fmt(parse(detailIso)); det.appendChild(h);
         const y = document.createElement("div"); y.textContent = `되는 사람 (${yes.length}): ${yes.join(", ") || "-"}`; det.appendChild(y);
         const nn = document.createElement("div"); nn.className = "no"; nn.textContent = `안 되는 사람 (${no.length}): ${no.join(", ") || "-"}`; det.appendChild(nn);
+        // 관리자: 이 날로 확정 / 확정 취소
+        if (adminKey && !isPast(detailIso)) {
+          const acts = document.createElement("div"); acts.className = "acts";
+          const cb = document.createElement("button");
+          const isIt = confirmed === detailIso;
+          cb.className = isIt ? "ghost" : "primary";
+          cb.textContent = isIt ? "확정 취소" : "이 날로 확정";
+          cb.addEventListener("click", async () => {
+            const next = isIt ? null : detailIso;
+            if (await adminCall("admin_confirm", { p_date: next })) {
+              confirmed = next;
+              renderConfirmed();
+              renderSummary();
+              toast(next ? "확정했어요" : "확정을 취소했어요");
+            }
+          });
+          acts.appendChild(cb); det.appendChild(acts);
+        }
         show(det, true);
       } else show(det, false);
 
@@ -352,7 +429,7 @@
       act.forEach((p) => {
         const s = document.createElement("button");
         s.className = "chip" + (p.name === me ? " me" : "") + (p.name === focusName ? " active" : "");
-        s.textContent = `${p.name} · ${p.dates.filter((d) => !isPast(d)).length}일`;
+        s.textContent = `${p.name} · ${live(p).length}일`;
         s.addEventListener("click", () => { focusName = focusName === p.name ? null : p.name; renderSummary(); });
         pl.appendChild(s);
       });
@@ -385,18 +462,21 @@
       const name = $("name-input").value.trim();
       const kl = $("known-list");
       kl.innerHTML = "";
-      all.forEach((p) => {
+      const names = MEMBERS.length ? MEMBERS : all.map((p) => p.name);
+      names.forEach((nm) => {
         const b = document.createElement("button");
-        b.className = "chip" + (p.name === name ? " active" : "");
-        b.textContent = p.name;
+        b.className = "chip" + (nm === name ? " active" : "");
+        b.textContent = nm;
         b.addEventListener("click", () => {
-          $("name-input").value = p.name;
+          $("name-input").value = nm;
           renderLogin();
           $("pin-input").focus();
         });
         kl.appendChild(b);
       });
-      show($("known"), all.length > 0);
+      $("known-label").textContent = MEMBERS.length ? "내 이름을 고르세요" : "이미 입력한 사람";
+      show($("known"), names.length > 0);
+      show($("name-field"), !MEMBERS.length);
       $("login-hint").textContent = all.some((p) => p.name === name)
         ? "처음 정한 PIN 4자리를 입력하세요."
         : "처음이면 아무 숫자 4자리를 정하세요. 다음에 같은 이름·PIN으로 들어오면 이어서 수정할 수 있어요.";
@@ -407,6 +487,7 @@
       const pin = $("pin-input").value.trim();
       const st = $("login-status");
       st.textContent = "";
+      if (MEMBERS.length && !MEMBERS.includes(name)) { st.textContent = "위에서 이름을 골라주세요."; return; }
       if (!name) { $("name-input").focus(); return; }
       if (!/^[0-9]{4}$/.test(pin)) { st.textContent = "PIN은 숫자 4자리예요."; $("pin-input").focus(); return; }
       $("enter-btn").disabled = true;
@@ -439,18 +520,7 @@
       renderSummary();
       toast("삭제했어요");
     });
-    // ---------- 관리 (관리 링크로 들어온 경우) ----------
-    const params = new URLSearchParams(location.search);
-    const adminStoreKey = `bs:admin:${id}`;
-    let adminKey = params.get("admin") || store.get(adminStoreKey, null);
-    if (adminKey) {
-      const { data: isAdmin } = await sb.rpc("check_admin", { p_room: id, p_key: adminKey });
-      if (isAdmin) store.set(adminStoreKey, adminKey);
-      else { store.del(adminStoreKey); adminKey = null; }
-    }
-    // 주소창에서 관리 키를 지워서, 주소를 그대로 복사해 공유해도 새지 않게
-    if (params.has("admin")) history.replaceState(null, "", `?r=${id}`);
-
+    // ---------- 관리 ----------
     const adminCall = async (fn, args) => {
       const { error } = await sb.rpc(fn, { p_room: id, p_key: adminKey, ...args });
       if (error) toast(error.message === "not admin" ? "관리 권한이 없어요" : "실패: " + error.message);
@@ -466,7 +536,7 @@
         const row = document.createElement("div");
         row.className = "item";
         const nm = document.createElement("span");
-        nm.textContent = `${p.name} · ${p.dates.filter((d) => !isPast(d)).length}일`;
+        nm.textContent = `${p.name} · ${live(p).length}일`;
         const acts = document.createElement("span");
         acts.className = "acts";
         const reset = document.createElement("button");
@@ -500,6 +570,7 @@
       $("a-start").value = room.start_date;
       $("a-end").value = room.end_date;
       $("a-total").value = room.total_people || "";
+      $("a-members").value = MEMBERS.join(", ");
       $("admin-copy-btn").addEventListener("click", async () => {
         const url = location.origin + location.pathname + `?r=${id}&admin=${adminKey}`;
         try { await navigator.clipboard.writeText(url); toast("관리 링크를 복사했어요"); }
@@ -520,6 +591,7 @@
         const ok = await adminCall("admin_update_room", {
           p_title: title, p_start: s, p_end: e,
           p_total: Number.isFinite(total) && total > 0 ? total : null,
+          p_members: parseMembers($("a-members").value),
         });
         if (ok) location.reload();
       });

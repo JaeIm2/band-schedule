@@ -44,10 +44,22 @@
       </div>
       <label for="c-total">인원 <span class="muted">(선택 — 넣으면 "전원 가능" 날짜를 따로 보여줘요)</span></label>
       <input id="c-total" type="number" min="1" max="50" placeholder="예: 5" />
+      <label for="c-members">멤버 <span class="muted">(선택 — 쉼표로 구분. 넣으면 이 이름으로만 입장하고, 아직 안 한 사람을 보여줘요)</span></label>
+      <input id="c-members" type="text" placeholder="예: 홍재, 슬기, 동훈" autocomplete="off" />
       <div class="row end">
         <button id="create-btn" class="primary">만들기</button>
       </div>
       <p id="create-status" class="status"></p>
+    </section>
+
+    <!-- 방: 확정된 날짜 -->
+    <section id="view-confirmed" class="card confirmed-card hidden">
+      <div class="confirmed-label">확정된 날짜</div>
+      <div id="confirmed-date" class="confirmed-date"></div>
+      <div class="row">
+        <a id="gcal-link" class="btn" target="_blank" rel="noopener">구글 캘린더에 추가</a>
+        <button id="ics-btn" class="ghost">캘린더 파일(.ics)</button>
+      </div>
     </section>
 
     <!-- 방: 관리 (관리 링크로 들어온 사람만) -->
@@ -70,8 +82,12 @@
       </div>
       <label for="a-total">인원 <span class="muted">(비우면 입력한 사람 기준)</span></label>
       <input id="a-total" type="number" min="1" max="50" />
+      <label for="a-members">멤버 <span class="muted">(쉼표로 구분, 비우면 누구나 입장)</span></label>
+      <input id="a-members" type="text" autocomplete="off" />
       <div class="row end"><button id="a-save-btn" class="primary">변경 저장</button></div>
       <p id="a-status" class="status"></p>
+
+      <p class="hint">날짜 확정은 아래 전체 종합에서 날짜를 누르면 나오는 "이 날로 확정" 버튼으로 해요.</p>
 
       <label>참여자 <span class="muted">(PIN을 잊었으면 초기화 → 다음에 입력하는 숫자가 새 PIN)</span></label>
       <div id="a-people" class="a-people"></div>
@@ -89,11 +105,13 @@
         <button id="copy-btn" class="ghost">링크 복사</button>
       </div>
       <div id="known" class="hidden">
-        <label>이미 입력한 사람</label>
+        <label id="known-label">이미 입력한 사람</label>
         <div id="known-list" class="known"></div>
       </div>
-      <label for="name-input">이름</label>
-      <input id="name-input" type="text" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+      <div id="name-field">
+        <label for="name-input">이름</label>
+        <input id="name-input" type="text" placeholder="이름을 입력하세요" maxlength="20" autocomplete="off" />
+      </div>
       <label for="pin-input">PIN 4자리</label>
       <div class="row">
         <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
@@ -127,6 +145,7 @@
         <h2>전체 종합 <span id="people-count" class="muted"></span></h2>
         <button id="refresh-btn" class="ghost">새로고침</button>
       </div>
+      <p id="pending" class="pending hidden"></p>
       <div id="best" class="best"></div>
       <div id="focus" class="focus hidden"></div>
       <div class="legend" id="legend">

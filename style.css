@@ -1,4 +1,5 @@
 :root {
+  --confirm: #e08a00;
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #1c1f24;
@@ -171,6 +172,17 @@ button.link.danger { color: var(--danger); }
 .dates .chip { padding: 4px 10px; }
 .dates .chip.sun { color: var(--sun); }
 .dates .chip.sel { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+.confirmed-card { border-color: var(--confirm); }
+.confirmed-label { font-size: 13px; font-weight: 700; color: var(--confirm); }
+.confirmed-date { font-size: 22px; font-weight: 700; margin-top: 4px; }
+a.btn {
+  display: inline-block; text-decoration: none; font-size: 14px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--cell); color: var(--text); padding: 8px 14px;
+}
+.summary .day.confirmed { box-shadow: inset 0 0 0 3px var(--confirm); }
+.pending { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.detail .acts { margin-top: 8px; }
 
 .people { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 .people .chip { padding: 4px 10px; }
